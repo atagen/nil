@@ -8,7 +8,7 @@ fn main() {
     // Disable rebuild when source files changed.
     println!("cargo:rerun-if-changed=build.rs");
 
-    let builtins_attr_names: Vec<String> = Command::new("nix")
+    let mut builtins_attr_names: Vec<String> = Command::new("nix")
         .args([
             "eval",
             "--experimental-features",
@@ -26,7 +26,7 @@ fn main() {
     // Probe each builtin names to filter all global names. Prim-ops are not included.
     // Here we run them in parallel. There are hundreds of names to test.
     #[allow(clippy::needless_collect)]
-    let global_names: Vec<bool> = {
+    let mut global_names: Vec<bool> = {
         builtins_attr_names
             .iter()
             .map(|name| {
@@ -54,7 +54,34 @@ fn main() {
             .collect()
     };
 
+    // Inject `scope` from nix-scope-plugin, which constructs nested attrsets
+    // from a dot-separated path string and a value. Plugin primops are global
+    // in nix but the build-time nix may not have the plugin loaded, so we
+    // ensure it is present and marked as global.
+    match builtins_attr_names.binary_search_by(|s| s.as_str().cmp("scope")) {
+        Ok(pos) => {
+            // Already present from nix, but ensure it is marked as global.
+            global_names[pos] = true;
+        }
+        Err(pos) => {
+            builtins_attr_names.insert(pos, "scope".to_owned());
+            global_names.insert(pos, true);
+        }
+    }
+
     let mut builtin_infos = dump_builtin_infos();
+    if !builtin_infos.iter().any(|b| b.name == "scope") {
+        builtin_infos.push(BuiltinInfo {
+            name: "scope".into(),
+            kind: "Function".into(),
+            doc: "Construct a nested attrset from a dot-separated path string and a value. \
+                  E.g., `scope \"a.b.c\" 42` produces `{ a = { b = { c = 42; }; }; }`."
+                .into(),
+            args: vec!["path".into(), "value".into()],
+            impure_only: false,
+            experimental_feature: None,
+        });
+    }
     builtin_infos.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
     assert_eq!(
         builtin_infos.windows(2).find(|w| w[0].name == w[1].name),

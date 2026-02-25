@@ -374,6 +374,7 @@ fn builtins() -> Ty {
         "readFile": (path -> string),
         "removeAttrs": ({ } -> [string] -> { }),
         "replaceStrings": ([string] -> [string] -> string -> string),
+        "scope": (forall a, string -> a -> { }),
         "scopedImport": (forall a, { } -> path -> a),
         "seq": (forall a b, a -> b -> b),
         "sort": (forall a, (a -> a -> bool) -> [a] -> [a]),
